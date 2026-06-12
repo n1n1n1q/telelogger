@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
  
 [project]
-name = "telelogger"
+name = "tele_logger"
 version = "0.1.0"
 description = "Stream shell-command output to a Telegram chat in real time."
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
 ]
  
 [project.scripts]
-telelogger = "tele_logger.cli:main"
+tele_logger = "tele_logger.cli:main"
  
 [tool.setuptools.packages.find]
 where = ["."]

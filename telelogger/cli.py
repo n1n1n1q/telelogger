@@ -7,7 +7,7 @@ from .core import run
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="telelogger",
+        prog="tele_logger",
         description="Run a shell command and stream its output to a Telegram chat.",
     )
     parser.add_argument(
