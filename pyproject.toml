@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+ 
+[project]
+name = "telelogger"
+version = "0.1.0"
+description = "Stream shell-command output to a Telegram chat in real time."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "pyTelegramBotAPI>=4.14",
+]
+ 
+[project.scripts]
+telelogger = "tele_logger.cli:main"
+ 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tele_logger*"]
+ 
