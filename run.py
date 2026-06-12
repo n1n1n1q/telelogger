@@ -10,7 +10,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python tele_logger.py <your system command>")
+        print("Usage: python telegram-cli-logger.py <your system command>")
         sys.exit(1)
     
     target_command = " ".join(sys.argv[1:])

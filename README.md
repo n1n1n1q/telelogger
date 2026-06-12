@@ -1,4 +1,4 @@
-# tele_logger
+# telegram-cli-logger
 
 Stream any shell command's output to a Telegram chat in real time.
 
@@ -7,28 +7,28 @@ Stream any shell command's output to a Telegram chat in real time.
 ```bash
 pip install .          # from the repo root
 # or, once published:
-pip install tele_logger
+pip install telegram-cli-logger
 ```
 
 ## Usage
 
 ```
-tele_logger --token <BOT_TOKEN> --chat-id <CHAT_ID> -- <command>
+telegram-cli-logger --token <BOT_TOKEN> --chat-id <CHAT_ID> -- <command>
 ```
 
 ### Examples
 
 ```bash
 # Basic
-tele_logger --token 123:ABC --chat-id 987654321 -- python train.py
+telegram-cli-logger --token 123:ABC --chat-id 987654321 -- python train.py
 
 # Long-running build
-tele_logger --token 123:ABC --chat-id 987654321 -- make -j4
+telegram-cli-logger --token 123:ABC --chat-id 987654321 -- make -j4
 
 # Using environment variables (recommended)
 export TELEGRAM_BOT_TOKEN=123:ABC
 export TELEGRAM_CHAT_ID=987654321
-tele_logger -- ./run_experiment.sh
+telegram-cli-logger -- ./run_experiment.sh
 ```
 
 ## Environment variables
@@ -41,7 +41,7 @@ tele_logger -- ./run_experiment.sh
 ## CLI reference
 
 ```
-usage: tele_logger [--token BOT_TOKEN] [--chat-id CHAT_ID] -- command [args ...]
+usage: telegram-cli-logger [--token BOT_TOKEN] [--chat-id CHAT_ID] -- command [args ...]
 
 options:
   --token BOT_TOKEN   Telegram bot token
