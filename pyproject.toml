@@ -14,9 +14,9 @@ dependencies = [
 ]
  
 [project.scripts]
-telegram-cli-logger = "telegram-cli-logger.cli:main"
- 
+telegram-cli-logger = "telelogger.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["telegram-cli-logger*"]
+include = ["telelogger*"]
  
