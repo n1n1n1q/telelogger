@@ -26,13 +26,40 @@ def format_duration(seconds: float) -> str:
     return f"{hours}h {rem_minutes}m {rem_seconds:.2f}s"
 
 
+def call_telegram_api_with_retry(method, *args, **kwargs):
+    """
+    Call a Telegram API method, retrying if a rate limit (HTTP 429) is hit.
+    """
+    while True:
+        try:
+            return method(*args, **kwargs)
+        except telebot.apihelper.ApiTelegramException as e:
+            if e.error_code == 429:
+                retry_after = 5
+                if e.result_json and isinstance(e.result_json, dict):
+                    retry_after = e.result_json.get("parameters", {}).get("retry_after", 5)
+                elif "retry after" in str(e).lower():
+                    try:
+                        retry_after = int(str(e).split("retry after")[-1].strip())
+                    except ValueError:
+                        pass
+                print(
+                    f"Telegram API rate limit (429) hit. Waiting for {retry_after} seconds before retrying...",
+                    file=sys.stderr,
+                )
+                time.sleep(retry_after)
+            else:
+                raise
+
+
 def send_log_file(bot: telebot.TeleBot, chat_id: int, reply_to_message_id: int, file_name: str, content: str) -> None:
     if not content:
         content = "(empty)"
     bio = io.BytesIO(content.encode("utf-8"))
     bio.name = file_name
     try:
-        bot.send_document(
+        call_telegram_api_with_retry(
+            bot.send_document,
             chat_id=chat_id,
             document=bio,
             reply_to_message_id=reply_to_message_id,
@@ -41,7 +68,8 @@ def send_log_file(bot: telebot.TeleBot, chat_id: int, reply_to_message_id: int, 
         print(f"Failed to send log file {file_name}: {e}", file=sys.stderr)
 
 
-def run(bot_token: str, chat_id: int, command: str) -> int:
+
+def run(bot_token: str, chat_id: int, command: str, update_interval: float = 5.0) -> int:
     """
     Run *command* in a subprocess and stream its output to a Telegram chat.
 
@@ -51,7 +79,8 @@ def run(bot_token: str, chat_id: int, command: str) -> int:
     header = get_host()
 
     try:
-        start_msg = bot.send_message(
+        start_msg = call_telegram_api_with_retry(
+            bot.send_message,
             chat_id,
             f"{header}\n\n🚀 **Starting execution:**\n`{command}`",
             parse_mode="Markdown",
@@ -59,7 +88,8 @@ def run(bot_token: str, chat_id: int, command: str) -> int:
     except Exception as e:
         raise RuntimeError(f"Failed to connect to Telegram: {e}") from e
 
-    reply_msg = bot.send_message(
+    reply_msg = call_telegram_api_with_retry(
+        bot.send_message,
         chat_id,
         f"{header}\n\n⏳ *Initializing output stream...*",
         reply_to_message_id=start_msg.message_id,
@@ -96,34 +126,78 @@ def run(bot_token: str, chat_id: int, command: str) -> int:
 
     start_time = time.time()
     last_update_time = time.time()
+    last_sent_text = ""
+    cooldown_until = 0.0
 
     # Periodically update the Telegram streaming message during execution
     while process.poll() is None or t_stdout.is_alive() or t_stderr.is_alive():
         time.sleep(0.1)
-        if time.time() - last_update_time > 2.0:
+        now = time.time()
+        if now - last_update_time > update_interval:
+            if now < cooldown_until:
+                continue
             with lock:
                 display_text = "".join(combined_lines[-15:])
             if display_text.strip():
                 # Avoid breaking triple-backtick markdown block
                 display_text_clean = display_text.replace("```", "'''")
-                try:
-                    bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=reply_msg.message_id,
-                        text=f"{header}\n\n⏳ **Running...**\n\n```\n{display_text_clean}\n```",
-                        parse_mode="Markdown",
-                    )
-                except telebot.apihelper.ApiTelegramException:
+                text_with_markdown = f"{header}\n\n⏳ **Running...**\n\n```\n{display_text_clean}\n```"
+                text_without_markdown = f"{header}\n\nRunning...\n\n{display_text_clean}"
+
+                # Only edit if changed
+                if text_with_markdown != last_sent_text:
                     try:
-                        # Fallback: send without markdown if markdown compilation fails
                         bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=reply_msg.message_id,
-                            text=f"{header}\n\nRunning...\n\n{display_text_clean}",
+                            text=text_with_markdown,
+                            parse_mode="Markdown",
                         )
+                        last_sent_text = text_with_markdown
+                    except telebot.apihelper.ApiTelegramException as e:
+                        if e.error_code == 429:
+                            retry_after = 5
+                            if e.result_json and isinstance(e.result_json, dict):
+                                retry_after = e.result_json.get("parameters", {}).get("retry_after", 5)
+                            elif "retry after" in str(e).lower():
+                                try:
+                                    retry_after = int(str(e).split("retry after")[-1].strip())
+                                except ValueError:
+                                    pass
+                            print(
+                                f"Warning: Telegram API rate limit (429) hit during execution. Cooldown for {retry_after} seconds.",
+                                file=sys.stderr,
+                            )
+                            cooldown_until = now + retry_after
+                        else:
+                            try:
+                                # Fallback: send without markdown if markdown compilation fails
+                                bot.edit_message_text(
+                                    chat_id=chat_id,
+                                    message_id=reply_msg.message_id,
+                                    text=text_without_markdown,
+                                )
+                                last_sent_text = text_without_markdown
+                            except telebot.apihelper.ApiTelegramException as e2:
+                                if e2.error_code == 429:
+                                    retry_after = 5
+                                    if e2.result_json and isinstance(e2.result_json, dict):
+                                        retry_after = e2.result_json.get("parameters", {}).get("retry_after", 5)
+                                    elif "retry after" in str(e2).lower():
+                                        try:
+                                            retry_after = int(str(e2).split("retry after")[-1].strip())
+                                        except ValueError:
+                                            pass
+                                    print(
+                                        f"Warning: Telegram API rate limit (429) hit during execution fallback. Cooldown for {retry_after} seconds.",
+                                        file=sys.stderr,
+                                    )
+                                    cooldown_until = now + retry_after
+                            except Exception:
+                                pass
                     except Exception:
                         pass
-            last_update_time = time.time()
+            last_update_time = now
 
     t_stdout.join()
     t_stderr.join()
@@ -135,19 +209,24 @@ def run(bot_token: str, chat_id: int, command: str) -> int:
     with lock:
         final_display = "".join(combined_lines[-20:]) or "No console output."
     final_display_clean = final_display.replace("```", "'''")
+    
+    final_text_markdown = f"{header}\n\n🏁 **Execution finished.**\n\n```\n{final_display_clean}\n```"
+    final_text_plain = f"{header}\n\nExecution finished.\n\n{final_display_clean}"
     try:
-        bot.edit_message_text(
+        call_telegram_api_with_retry(
+            bot.edit_message_text,
             chat_id=chat_id,
             message_id=reply_msg.message_id,
-            text=f"{header}\n\n🏁 **Execution finished.**\n\n```\n{final_display_clean}\n```",
+            text=final_text_markdown,
             parse_mode="Markdown",
         )
     except Exception:
         try:
-            bot.edit_message_text(
+            call_telegram_api_with_retry(
+                bot.edit_message_text,
                 chat_id=chat_id,
                 message_id=reply_msg.message_id,
-                text=f"{header}\n\nExecution finished.\n\n{final_display_clean}",
+                text=final_text_plain,
             )
         except Exception:
             pass
@@ -208,13 +287,14 @@ def run(bot_token: str, chat_id: int, command: str) -> int:
     # Send the separate status message
     reply_id = start_msg.message_id
     try:
-        status_message = bot.send_message(
+        status_message = call_telegram_api_with_retry(
+            bot.send_message,
             chat_id=chat_id,
             text=status_msg,
             parse_mode="Markdown",
         )
         reply_id = status_message.message_id
-    except telebot.apihelper.ApiTelegramException:
+    except telebot.apihelper.ApiTelegramException as e:
         # Fallback to plain text on Markdown syntax failure
         try:
             status_msg_plain = (
@@ -223,13 +303,14 @@ def run(bot_token: str, chat_id: int, command: str) -> int:
                 .replace("❌", "[Failed]")
                 .replace("✅", "[Success]")
             )
-            status_message = bot.send_message(
+            status_message = call_telegram_api_with_retry(
+                bot.send_message,
                 chat_id=chat_id,
                 text=status_msg_plain,
             )
             reply_id = status_message.message_id
-        except Exception as e:
-            print(f"Failed to send plain status message: {e}", file=sys.stderr)
+        except Exception as ex:
+            print(f"Failed to send plain status message: {ex}", file=sys.stderr)
     except Exception as e:
         print(f"Failed to send status message: {e}", file=sys.stderr)
 

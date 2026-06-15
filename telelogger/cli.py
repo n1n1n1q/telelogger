@@ -32,6 +32,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--interval",
+        "-i",
+        type=float,
+        default=float(os.environ.get("TELEGRAM_UPDATE_INTERVAL", 5.0)),
+        help=(
+            "Update interval in seconds (default: 5.0). "
+            "Falls back to the TELEGRAM_UPDATE_INTERVAL environment variable."
+        ),
+    )
+    parser.add_argument(
         "command",
         nargs=argparse.REMAINDER,
         help="Shell command to execute (everything after the flags).",
@@ -73,6 +83,7 @@ def main() -> None:
             bot_token=args.token,
             chat_id=args.chat_id,
             command=command_str,
+            update_interval=args.interval,
         )
     except RuntimeError as e:
         print(f"error: {e}", file=sys.stderr)
